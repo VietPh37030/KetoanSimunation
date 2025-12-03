@@ -1,22 +1,35 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { InterviewRound, UserProfile, Question, Evaluation, ReportData, InterviewItem } from "../types";
 
+type GlobalWithEnv = typeof globalThis & {
+  __ENV__?: Record<string, string | undefined>;
+  __VITE_API_KEY__?: string;
+};
+
 // Helper to safely get API Key in various environments (Vite, CRA, Next.js)
 const getApiKey = (): string => {
   try {
-    // 1. Try Vite standard (import.meta.env)
-    // @ts-ignore
-    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_KEY) {
-      // @ts-ignore
-      return import.meta.env.VITE_API_KEY;
-    }
-    
-    // 2. Try Standard process.env (if polyfilled or Node env)
+    // 1. Vite build-time variables (preferred for client-side bundles)
+    const viteKey = (() => {
+      try {
+        return (import.meta as any)?.env?.VITE_API_KEY as string | undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+    if (viteKey) return viteKey;
+
+    // 2. Runtime globals injected via script tag (e.g. <script>window.__ENV__</script>)
+    const globalEnv = (globalThis as GlobalWithEnv);
+    const runtimeKey = globalEnv.__VITE_API_KEY__ || globalEnv.__ENV__?.VITE_API_KEY;
+    if (runtimeKey) return runtimeKey;
+
+    // 3. Standard process.env (during SSR/build or polyfilled at runtime)
     if (typeof process !== 'undefined' && process.env) {
-      // Check for standard naming and framework specific prefixes
-      return process.env.API_KEY || 
-             process.env.REACT_APP_API_KEY || 
-             process.env.NEXT_PUBLIC_API_KEY || 
+      return process.env.VITE_API_KEY ||
+             process.env.API_KEY ||
+             process.env.REACT_APP_API_KEY ||
+             process.env.NEXT_PUBLIC_API_KEY ||
              '';
     }
   } catch (e) {
