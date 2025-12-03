@@ -1,9 +1,23 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { InterviewRound, UserProfile, Question, Evaluation, ReportData, InterviewItem } from "../types";
 
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
 type GlobalWithEnv = typeof globalThis & {
   __ENV__?: Record<string, string | undefined>;
   __VITE_API_KEY__?: string;
+};
+
+const LOCAL_STORAGE_KEY = 'ketoan_ai_api_key';
+
+const readFromLocalStorage = (): string | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const value = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+    return value || undefined;
+  } catch (err) {
+    console.warn('Unable to read API key from localStorage', err);
+    return undefined;
+  }
 };
 
 // Helper to safely get API Key in various environments (Vite, CRA, Next.js)
@@ -20,17 +34,23 @@ const getApiKey = (): string => {
     if (viteKey) return viteKey;
 
     // 2. Runtime globals injected via script tag (e.g. <script>window.__ENV__</script>)
-    const globalEnv = (globalThis as GlobalWithEnv);
+    const globalEnv = globalThis as GlobalWithEnv;
     const runtimeKey = globalEnv.__VITE_API_KEY__ || globalEnv.__ENV__?.VITE_API_KEY;
     if (runtimeKey) return runtimeKey;
 
-    // 3. Standard process.env (during SSR/build or polyfilled at runtime)
+    // 3. Browser localStorage (allow user-provided key after deployment)
+    const storedKey = readFromLocalStorage();
+    if (storedKey) return storedKey;
+
+    // 4. Standard process.env (during SSR/build or polyfilled at runtime)
     if (typeof process !== 'undefined' && process.env) {
-      return process.env.VITE_API_KEY ||
-             process.env.API_KEY ||
-             process.env.REACT_APP_API_KEY ||
-             process.env.NEXT_PUBLIC_API_KEY ||
-             '';
+      return (
+        process.env.VITE_API_KEY ||
+        process.env.API_KEY ||
+        process.env.REACT_APP_API_KEY ||
+        process.env.NEXT_PUBLIC_API_KEY ||
+        ''
+      );
     }
   } catch (e) {
     console.warn("Error retrieving API key environment variable", e);
@@ -38,21 +58,67 @@ const getApiKey = (): string => {
   return '';
 };
 
-const apiKey = getApiKey();
+let cachedClient: GoogleGenAI | null = null;
+let cachedKey = '';
 
-// Initialize with a fallback to prevent "Module Evaluation Error" (White Screen)
-// If key is missing, it will only fail when actual API calls are made.
-const ai = new GoogleGenAI({ apiKey: apiKey || 'MISSING_API_KEY' });
+const getClient = (): GoogleGenAI => {
+  const key = getApiKey();
+  if (!key) {
+    throw new Error("API Key chưa được cấu hình. Vui lòng thêm biến môi trường VITE_API_KEY trên Vercel hoặc nhập trực tiếp trong ứng dụng.");
+  }
+
+  if (!cachedClient || cachedKey !== key) {
+    cachedClient = new GoogleGenAI({ apiKey: key });
+    cachedKey = key;
+  }
+
+  return cachedClient;
+};
+
+export const configureRuntimeApiKey = (key: string): void => {
+  const trimmed = key.trim();
+  if (!trimmed) return;
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, trimmed);
+    } catch (err) {
+      console.warn('Unable to persist API key to localStorage', err);
+    }
+  }
+
+  const globalEnv = globalThis as GlobalWithEnv;
+  globalEnv.__VITE_API_KEY__ = trimmed;
+
+  cachedKey = '';
+  cachedClient = null;
+};
+
+export const clearRuntimeApiKey = (): void => {
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(LOCAL_STORAGE_KEY);
+    } catch (err) {
+      console.warn('Unable to remove API key from localStorage', err);
+    }
+  }
+  const globalEnv = globalThis as GlobalWithEnv;
+  delete globalEnv.__VITE_API_KEY__;
+  cachedKey = '';
+  cachedClient = null;
+};
+
+export const isApiKeyConfigured = (): boolean => {
+  return Boolean(getApiKey());
+};
+
 const MODEL_NAME = 'gemini-2.5-flash';
 
 // Helper to generate schema-based response
 async function generateJson<T>(prompt: string, schema: Schema): Promise<T> {
-  if (!apiKey || apiKey === 'MISSING_API_KEY') {
-    throw new Error("API Key chưa được cấu hình. Vui lòng thêm biến môi trường VITE_API_KEY trên Vercel.");
-  }
-
   try {
-    const response = await ai.models.generateContent({
+    const client = getClient();
+    const response = await client.models.generateContent({
       model: MODEL_NAME,
       contents: prompt,
       config: {

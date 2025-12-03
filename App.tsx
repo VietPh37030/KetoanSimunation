@@ -4,15 +4,20 @@ import LandingPage from './components/LandingPage';
 import SetupForm from './components/SetupForm';
 import InterviewSession from './components/InterviewSession';
 import ReportPage from './components/ReportPage';
+import ApiKeyNotice from './components/ApiKeyNotice';
+import { isApiKeyConfigured } from './services/geminiService';
 
 function App() {
   const [view, setView] = useState<AppView>(AppView.LANDING);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [history, setHistory] = useState<InterviewItem[]>([]);
+  const [apiReady, setApiReady] = useState<boolean>(() => isApiKeyConfigured());
+  const [apiNoticeSignal, setApiNoticeSignal] = useState(0);
 
   // Simple persisted state check (in a real app, use localStorage more robustly)
   useEffect(() => {
     // Check if user has an unfinished session? (omitted for simplicity of demo)
+    setApiReady(isApiKeyConfigured());
   }, []);
 
   const handleStart = () => {
@@ -34,10 +39,19 @@ function App() {
     setView(AppView.SETUP);
   };
 
+  const handleApiConfigured = () => {
+    setApiReady(isApiKeyConfigured());
+  };
+
+  const handleRequestApiKey = () => {
+    setApiNoticeSignal((prev) => prev + 1);
+  };
+
   return (
     <div className="antialiased font-sans text-slate-900">
+      <ApiKeyNotice onConfigured={handleApiConfigured} openSignal={apiNoticeSignal} />
       {view === AppView.LANDING && (
-        <LandingPage onStart={handleStart} />
+        <LandingPage onStart={handleStart} apiReady={apiReady} onRequestApiKey={handleRequestApiKey} />
       )}
 
       {view === AppView.SETUP && (

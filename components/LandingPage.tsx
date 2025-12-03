@@ -1,12 +1,14 @@
 import React from 'react';
-import { Briefcase, TrendingUp, Users, ArrowRight } from 'lucide-react';
+import { TrendingUp, ArrowRight, KeyRound } from 'lucide-react';
 import Button from './Button';
 
 interface Props {
   onStart: () => void;
+  apiReady: boolean;
+  onRequestApiKey: () => void;
 }
 
-const LandingPage: React.FC<Props> = ({ onStart }) => {
+const LandingPage: React.FC<Props> = ({ onStart, apiReady, onRequestApiKey }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col">
       <header className="px-6 py-4 flex items-center justify-between">
@@ -32,10 +34,24 @@ const LandingPage: React.FC<Props> = ({ onStart }) => {
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 pt-4">
-            <Button onClick={onStart} className="text-lg px-8 py-3 h-auto">
+            <Button onClick={onStart} className="text-lg px-8 py-3 h-auto" disabled={!apiReady}>
               Bắt đầu phỏng vấn ngay <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onRequestApiKey}
+              className="text-sm h-auto px-5 py-3 flex items-center gap-2"
+            >
+              <KeyRound className="w-4 h-4" /> Cấu hình API Key
+            </Button>
           </div>
+
+          {!apiReady && (
+            <p className="text-sm text-red-500/90">
+              Chưa tìm thấy API Key. Nhấn "Cấu hình API Key" để nhập khóa Gemini trước khi bắt đầu.
+            </p>
+          )}
 
           <div className="grid grid-cols-3 gap-4 pt-8 border-t border-slate-200">
             <div>
